@@ -335,8 +335,8 @@ class SmartChineseNumberingSettingTab extends PluginSettingTab {
   }
 
   scheduleSave() {
-    if (this.saveTimer) window.clearTimeout(this.saveTimer);
-    this.saveTimer = window.setTimeout(async () => {
+    if (this.saveTimer) clearTimeout(this.saveTimer);
+    this.saveTimer = setTimeout(async () => {
       this.saveTimer = null;
       await this.plugin.saveSettings();
       this.refreshDynamic();

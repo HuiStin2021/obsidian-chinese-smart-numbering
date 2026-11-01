@@ -1,5 +1,5 @@
 /*
- * 中文智能编号 (Smart Chinese Numbering) v1.1.0
+ * 中文智能编号 (Smart Chinese Numbering) v1.1.1
  * 本文件由 build.mjs 生成，请勿直接编辑；修改 src/core.js 或 src/plugin-entry.js 后运行 node build.mjs
  */
 "use strict";
@@ -994,8 +994,8 @@ class SmartChineseNumberingSettingTab extends PluginSettingTab {
   }
 
   scheduleSave() {
-    if (this.saveTimer) window.clearTimeout(this.saveTimer);
-    this.saveTimer = window.setTimeout(async () => {
+    if (this.saveTimer) clearTimeout(this.saveTimer);
+    this.saveTimer = setTimeout(async () => {
       this.saveTimer = null;
       await this.plugin.saveSettings();
       this.refreshDynamic();

@@ -122,8 +122,13 @@ mkdir -p "$VAULT/.obsidian/plugins/chinese-smart-numbering"
 cp manifest.json main.js styles.css "$VAULT/.obsidian/plugins/chinese-smart-numbering/"
 ```
 
-然后在 Obsidian 里 **设置 → 第三方插件** 重载并启用「中文智能编号」。
+然后在 Obsidian 里 **设置 → 第三方插件** 重载并启用「Smart Chinese Numbering」。
 （插件目录与 `manifest.json` 的 `id` 必须都是 `chinese-smart-numbering`。）
+
+### 为什么目录里显示英文名
+
+Obsidian 社区目录对 `manifest.json` 的 `name` 有硬性限制：**只接受 Basic Latin 字符**（也禁止出现 `Obsidian`、不能以 `Obsi` / `dian` 开头结尾）。
+所以目录里的名字是 **Smart Chinese Numbering**，中文名「中文智能编号」保留在设置页标题、命令提示和本文档里 —— 这是同类中文插件（如 Banxin Typography）的通行做法。
 
 ### 从 0.1.0 / 1.0.0 升级
 
