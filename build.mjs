@@ -35,4 +35,4 @@ const banner = [
 
 const out = banner + entry.replace("/*__CORE__*/", () => body);
 writeFileSync(join(root, "main.js"), out, "utf8");
-console.log("main.js 已生成：" + out.length + " 字节（v" + manifest.version + "）");
+console.log("main.js 已生成：" + Buffer.byteLength(out, "utf8") + " 字节 / " + out.length + " 字符（v" + manifest.version + "）");

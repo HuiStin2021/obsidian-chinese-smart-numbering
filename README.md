@@ -153,6 +153,20 @@ node --test test/core.test.js test/scheme.test.js test/plugin.test.js   # 62 项
 设计上，`src/core.js` 的每个操作都是「整篇文本 + 光标位置 → 一段待替换的 `{from, to, insert, cursor}`」，
 不碰任何 Obsidian / CodeMirror 对象；同一份逻辑被插件、单元测试和浏览器 demo 复用。
 
+## English
+
+**Smart Chinese Numbering** — type Chinese-style numbered outlines in Obsidian without fighting Markdown.
+
+Markdown only knows `1.` / `-`. Chinese writers need `一、`, `（一）`, `1、`, `（1）`, `①`, and lettered mail style `1.1、`.
+
+- **Enter** continues the sequence (`1、` → `2、`, `一、` → `二、`); **Tab / Shift-Tab** change level; mail/IM schemes auto-indent.
+- **Four presets**: *Gongwen* (official documents), *Points* (WeChat / IM), *Multi-level* (email `1.1、` / `1.1.1、`), *Custom* (any `{cn} {n} {c} {p}` template).
+- Multi-level scheme renumbers the whole block on Enter, so a new row never desyncs the list below.
+- Output is plain text — no Markdown lists are generated, so exports to Word/PDF keep the Chinese numbering.
+- Desktop tested; no network access, no telemetry, zero runtime dependencies.
+
+Docs are in Chinese (the plugin targets Chinese-language writing). Install from **Settings → Community plugins → Browse** and search for "中文智能编号".
+
 ## 许可证
 
 MIT
