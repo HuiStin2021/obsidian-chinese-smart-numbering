@@ -35,8 +35,8 @@ test("方案：编译结果缓存，同一对象只编译一次", () => {
 
 test("方案：示例标记（含缩进）", () => {
   assert.deepEqual(core.schemeSample(core.PRESETS.gongwen), ["一、", "（一）", "1、", "（1）", "①"]);
-  assert.deepEqual(core.schemeSample(core.PRESETS.points), ["一、", "  1、", "    （1）", "      ①"]);
-  assert.deepEqual(core.schemeSample(core.PRESETS.outline), ["一、", "  1.1、", "    1.1.1、"]);
+  assert.deepEqual(core.schemeSample(core.PRESETS.points), ["一、", "  1、"]);
+  assert.deepEqual(core.schemeSample(core.PRESETS.outline), ["一、", "  1、", "    1.1、"]);
   assert.deepEqual(
     core.schemeSample(custom({ levels: ["第{n}条 "], numbering: "independent" })),
     ["第1条 "]
@@ -98,9 +98,23 @@ test("方案：标点等价类（1． / 1。 / (一)）", () => {
 
 test("方案：{p} 只在对应段数的层级命中", () => {
   const outline = core.PRESETS.outline;
-  assert.equal(core.parseLine("1.1、A", { scheme: outline }).level, 2);
-  assert.equal(core.parseLine("1.1.1、A", { scheme: outline }).level, 3);
-  assert.equal(core.parseLine("1.1.1.1、A", { scheme: outline }), null);
+  assert.equal(core.parseLine("1、A", { scheme: outline }).level, 2);
+  assert.equal(core.parseLine("1.1、A", { scheme: outline }).level, 3);
+  assert.equal(core.parseLine("1.1.1、A", { scheme: outline }), null);
+});
+
+test("方案：路径起点不合法要报错", () => {
+  const bad = core.validateScheme(
+    custom({ levels: ["{cn}、", "{p}、"], numbering: "hierarchical", pathBase: 9 })
+  );
+  assert.equal(bad.ok, false);
+  assert.match(bad.errors.join(""), /路径起点/);
+
+  const before = core.validateScheme(
+    custom({ levels: ["{p}、", "{p}、"], numbering: "hierarchical", pathBase: 2 })
+  );
+  assert.equal(before.ok, false);
+  assert.match(before.errors.join(""), /路径起点之前/);
 });
 
 test("方案：{n}. 的 Markdown 边界", () => {

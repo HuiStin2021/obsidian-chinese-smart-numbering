@@ -1,0 +1,61 @@
+/* 中文智能编号 · 设置页样式 */
+
+.scn-status {
+  cursor: pointer;
+}
+
+.scn-example {
+  margin: -4px 0 18px;
+}
+
+.scn-example-title {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.scn-example-body {
+  font-family: var(--font-monospace);
+  font-size: 12.5px;
+  line-height: 1.85;
+  white-space: pre;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  overflow-x: auto;
+  color: var(--text-normal);
+}
+
+.scn-example-body.mod-error {
+  color: var(--text-error);
+}
+
+.scn-validation {
+  font-size: 12px;
+  color: var(--text-muted);
+  min-height: 18px;
+  margin: -2px 0 10px;
+}
+
+.scn-validation.mod-error {
+  color: var(--text-error);
+}
+
+.scn-group {
+  margin: 10px 0 22px;
+  padding-left: 14px;
+  border-left: 2px solid var(--background-modifier-border);
+}
+
+.scn-group h4 {
+  margin: 4px 0 2px;
+}
+
+.scn-templates {
+  width: 100%;
+  font-family: var(--font-monospace);
+  font-size: 13px;
+  line-height: 1.6;
+}

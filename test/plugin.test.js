@@ -34,9 +34,20 @@ class FakeEl {
   createDiv(options) {
     const el = new FakeEl();
     if (options && options.text) el.text = options.text;
+    if (options && options.cls) el.classes.push(options.cls);
     this.children.push(el);
     return el;
   }
+  createEl(tag, options) {
+    return this.createDiv(options);
+  }
+}
+
+function collectByClass(node, cls, out) {
+  const acc = out || [];
+  if (node.classes && node.classes.includes(cls)) acc.push(node);
+  for (const child of node.children || []) collectByClass(child, cls, acc);
+  return acc;
 }
 
 const stubObsidian = {
@@ -224,26 +235,26 @@ test("键盘：分点方案 Tab 缩进、回车保持缩进", async () => {
   assert.equal(view2.text, "  1、A\n  2、");
 });
 
-test("键盘：多级方案回车后自动重排整块", async () => {
+test("键盘：邮件方案回车后自动重排整块", async () => {
   const plugin = await makePlugin({ schemeId: "outline" });
-  const text = "一、背景\n  1.1、现状";
+  const text = "一、背景\n  1、现状";
   const view = makeView(text, 4); // 在第一行末尾回车
   assert.equal(plugin.handleKeydown(key("Enter"), view), true);
-  assert.equal(view.text, "一、背景\n二、\n  2.1、现状");
+  assert.equal(view.text, "一、背景\n二、\n  1、现状");
 });
 
-test("键盘：多级方案 Tab 后自动重排同级编号", async () => {
+test("键盘：邮件方案 Tab 后自动重排同级编号", async () => {
   const plugin = await makePlugin({ schemeId: "outline" });
-  const text = "一、背景\n  1.1、现状";
+  const text = "一、背景\n  1、现状";
   const view = makeView(text, 4); // 在第一行 Tab
   assert.equal(plugin.handleKeydown(key("Tab"), view), true);
-  assert.equal(view.text, "  1.1、背景\n  1.2、现状");
+  assert.equal(view.text, "  1、背景\n  2、现状");
 });
 
-test("键盘：多级方案退格清除编号", async () => {
+test("键盘：邮件方案退格清除编号", async () => {
   const plugin = await makePlugin({ schemeId: "outline" });
-  const text = "  1.1、现状";
-  const view = makeView(text, 6);
+  const text = "  1、现状";
+  const view = makeView(text, 4);
   assert.equal(plugin.handleKeydown(key("Backspace"), view), true);
   assert.equal(view.text, "  现状"); // 保留缩进，只删编号
 });
@@ -280,7 +291,7 @@ test("键盘：停用、输入法、多光标、选区、修饰键都不介入",
 test("键盘：命令式换级在多级方案下也会重排", async () => {
   const plugin = await makePlugin({ schemeId: "outline" });
   const editor = {
-    value: "一、背景\n  1.1、现状",
+    value: "一、背景\n  1、现状",
     cursor: 0,
     getValue() {
       return this.value;
@@ -302,7 +313,7 @@ test("键盘：命令式换级在多级方案下也会重排", async () => {
     },
   };
   plugin.shiftLevel(editor, 1);
-  assert.equal(editor.value, "  1.1、背景\n  1.2、现状");
+  assert.equal(editor.value, "  1、背景\n  2、现状");
 });
 
 test("命令：重排当前编号块", async () => {
@@ -366,8 +377,8 @@ test("方案：切换后运行时、状态栏、通知同步", async () => {
   await plugin.setScheme("outline");
   assert.equal(plugin.settings.schemeId, "outline");
   assert.equal(plugin.runtime.scheme.id, "outline");
-  assert.equal(plugin.statusEl.text, "编号：多级");
-  assert.match(notices.pop(), /多级/);
+  assert.equal(plugin.statusEl.text, "编号：邮件");
+  assert.match(notices.pop(), /邮件/);
 
   await plugin.setScheme("custom");
   assert.equal(plugin.runtime.scheme.id, "custom");
@@ -405,4 +416,61 @@ test("设置：自定义模板生效（第{n}条）", async () => {
   const view = makeView(text, text.length);
   assert.equal(plugin.handleKeydown(key("Enter"), view), true);
   assert.equal(view.text, "第1条 总则\n第2条 ");
+});
+
+test("设置：自定义独立 / 多级两套模板互不干扰", async () => {
+  const multi = await makePlugin({
+    schemeId: "custom",
+    customNumbering: "hierarchical",
+    customLevels: ["{cn}、"],
+    customMultiLevels: ["{cn}、", "{n}、", "{p}、"],
+    customMultiIndent: 2,
+    customPathBase: 2,
+  });
+  assert.equal(multi.runtime.scheme.numbering, "hierarchical");
+  assert.equal(multi.runtime.scheme.pathBase, 2);
+  assert.equal(multi.runtime.scheme.levels.length, 3);
+  const view = makeView("  1、现状", 2);
+  assert.equal(multi.handleKeydown(key("Tab"), view), true);
+  assert.equal(view.text, "    1.1、现状");
+
+  const single = await makePlugin({
+    schemeId: "custom",
+    customNumbering: "independent",
+    customLevels: ["{cn}、"],
+    customMultiLevels: ["{cn}、", "{n}、", "{p}、"],
+  });
+  assert.equal(single.runtime.scheme.numbering, "independent");
+  assert.equal(single.runtime.scheme.levels.length, 1);
+});
+
+test("设置：旧版 customSeparator 迁移到多级分隔符", async () => {
+  const plugin = await makePlugin({
+    schemeId: "custom",
+    customNumbering: "hierarchical",
+    customMultiLevels: ["{cn}、", "{p}、"],
+    customSeparator: "-",
+  });
+  assert.equal(plugin.settings.customMultiSeparator, "-");
+  assert.equal("customSeparator" in plugin.settings, false);
+  assert.equal(plugin.runtime.scheme.separator, "-");
+});
+
+test("设置页：公文与自定义模式都能渲染出示例块", async () => {
+  const plugin = new PluginClass({});
+  await plugin.onload();
+  const tab = plugin.settingTab;
+  tab.containerEl.isShown = () => true;
+
+  tab.display();
+  let bodies = collectByClass(tab.containerEl, "scn-example-body", []);
+  assert.equal(bodies.length, 1);
+  assert.match(bodies[0].children.map((c) => c.text).join("\n"), /一、背景与目标/);
+
+  plugin.settings.schemeId = "custom";
+  tab.display();
+  bodies = collectByClass(tab.containerEl, "scn-example-body", []);
+  assert.equal(bodies.length, 3); // 当前方案 + 独立 + 多级
+  const hint = bodies[2].children.map((c) => c.text).join("\n");
+  assert.match(hint, /1\.1、具体细节/);
 });

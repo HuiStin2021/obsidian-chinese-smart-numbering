@@ -93,15 +93,16 @@ test("解析：不该误判的行", () => {
   assert.equal(core.parseLine("2）括号不配对", GONGWEN), null);
 });
 
-test("解析：多级路径按段数区分层级", () => {
-  const two = core.parseLine("  1.1、现状", OUTLINE);
+test("解析：邮件方案按段数区分二三级", () => {
+  const two = core.parseLine("  1、现状", OUTLINE);
   assert.equal(two.level, 2);
-  assert.deepEqual(two.path, [1, 1]);
+  assert.equal(two.number, 1);
 
-  const three = core.parseLine("    1.1.1、细节", OUTLINE);
+  const three = core.parseLine("    1.1、细节", OUTLINE);
   assert.equal(three.level, 3);
-  assert.deepEqual(three.path, [1, 1, 1]);
+  assert.deepEqual(three.path, [1, 1]);
 
+  assert.equal(core.parseLine("    1.1.1、多了一段", OUTLINE), null);
   assert.equal(core.parseLine("1.5 亿元", OUTLINE), null);
   assert.equal(core.parseLine("1.1、", POINTS), null);
 });
@@ -239,49 +240,54 @@ test("重排：光标位置随编号长度变化", () => {
   assert.equal(res.cursor, res.text.length);
 });
 
-// ---------------------------------------------------------------- 分点（微信/IM）
+// ---------------------------------------------------------------- 微信 / IM（两级）
 
-test("分点：Tab 后光标仍在行尾", () => {
+test("微信：Tab 后光标仍在行尾", () => {
   const res = tab("一、A", 3, 1, POINTS);
   assert.equal(res.text, "  1、A");
   assert.equal(res.cursor, "  1、A".length);
 });
 
-test("分点：Tab 缩进 2，回车保持缩进，Shift-Tab 缩回", () => {
+test("微信：两级、每级缩进 2，第二级到底不再下沉", () => {
   assert.equal(tab("一、A", 0, 1, POINTS).text, "  1、A");
   assert.equal(enter("  1、A", 5, POINTS).text, "  1、A\n  2、");
-  assert.equal(tab("  1、A", 2, 1, POINTS).text, "    （1）A");
-  assert.equal(tab("    （1）A", 4, -1, POINTS).text, "  1、A");
   assert.equal(tab("  1、A", 2, -1, POINTS).text, "一、A");
+  assert.equal(tab("  1、A", 2, 1, POINTS), null);
 });
 
-// ---------------------------------------------------------------- 多级（邮件 1.1、）
+// ---------------------------------------------------------------- 邮件（一、/1、/1.1、）
 
-test("多级：一、下面接 1.1、，路径按父级走", () => {
-  assert.equal(tab("一、背景", 0, 1, OUTLINE).text, "  1.1、背景");
-  assert.equal(enter("  1.1、现状", 8, OUTLINE).text, "  1.1、现状\n  1.2、");
-  assert.equal(enter("    1.1.1、细节", 12, OUTLINE).text, "    1.1.1、细节\n    1.1.2、");
+test("邮件：一、 → 1、 → 1.1、，每级缩进 2", () => {
+  assert.equal(tab("一、背景", 0, 1, OUTLINE).text, "  1、背景");
+  assert.equal(tab("  1、现状", 2, 1, OUTLINE).text, "    1.1、现状");
+  assert.equal(enter("  1、现状", 8, OUTLINE).text, "  1、现状\n  2、");
+  assert.equal(enter("    1.1、细节", 12, OUTLINE).text, "    1.1、细节\n    1.2、");
 });
 
-test("多级：Tab / Shift-Tab 逐级切换", () => {
-  assert.equal(tab("  1.1、现状", 2, 1, OUTLINE).text, "    1.1.1、现状");
-  assert.equal(tab("    1.1.1、细节", 4, -1, OUTLINE).text, "  1.1、细节");
+test("邮件：Tab / Shift-Tab 逐级切换", () => {
+  assert.equal(tab("  1、现状", 2, 1, OUTLINE).text, "    1.1、现状");
+  assert.equal(tab("    1.1、细节", 4, -1, OUTLINE).text, "  1、细节");
+  assert.equal(tab("一、背景", 0, -1, OUTLINE), null);
 });
 
-test("多级：整块重排按父级重算路径", () => {
-  const text = "一、背景\n  1.1、现状\n  1.1、问题\n二、方案\n  1.1、措施";
+test("邮件：Tab 下沉时父级序号跟着走（2、 → 2.1、）", () => {
+  assert.equal(tab("  2、问题", 2, 1, OUTLINE).text, "    2.1、问题");
+});
+
+test("邮件：整块重排按父级重算路径", () => {
+  const text = "一、背景\n  1、现状\n    1.1、细节\n  2、问题\n    1.1、错位\n二、方案\n  1、思路\n    1.1、路径";
   assert.equal(
     renumberText(text, OUTLINE),
-    "一、背景\n  1.1、现状\n  1.2、问题\n二、方案\n  2.1、措施"
+    "一、背景\n  1、现状\n    1.1、细节\n  2、问题\n    2.1、错位\n二、方案\n  1、思路\n    1.1、路径"
   );
 });
 
-test("多级：1.5 亿元 不被当成编号", () => {
+test("邮件：1.5 亿元 不被当成编号", () => {
   assert.equal(enter("1.5 亿元", 6, OUTLINE), null);
 });
 
-test("多级：超过方案层级后不再换级", () => {
-  assert.equal(tab("    1.1.1、细节", 4, 1, OUTLINE), null);
+test("邮件：超过方案层级后不再换级", () => {
+  assert.equal(tab("    1.1、细节", 4, 1, OUTLINE), null);
 });
 
 // ---------------------------------------------------------------- 自定义
@@ -317,8 +323,57 @@ test("自定义：纯数字大纲 1、 1.1、 1.1.1、", () => {
   );
 });
 
-// ---------------------------------------------------------------- 数字工具
+test("自定义：多级标号可把路径起点放在第 2 级（一、/1、/1.1、）", () => {
+  const scheme = {
+    id: "custom",
+    name: "邮件式",
+    levels: ["{cn}、", "{n}、", "{p}、"],
+    indent: 2,
+    numbering: "hierarchical",
+    separator: ".",
+    pathBase: 2,
+  };
+  assert.equal(tab("一、背景", 0, 1, { scheme }).text, "  1、背景");
+  assert.equal(tab("  1、现状", 2, 1, { scheme }).text, "    1.1、现状");
+  assert.equal(enter("    1.1、细节", 12, { scheme }).text, "    1.1、细节\n    1.2、");
+  assert.equal(
+    renumberText("一、A\n  1、a\n    1.1、x\n  2、b\n    1.1、y", { scheme }),
+    "一、A\n  1、a\n    1.1、x\n  2、b\n    2.1、y"
+  );
+});
 
+test("自定义：路径起点为 1 时，第 2 级就是 1.1、", () => {
+  const scheme = {
+    id: "custom",
+    name: "纯数字",
+    levels: ["{n}、", "{p}、", "{p}、"],
+    indent: 2,
+    numbering: "hierarchical",
+    separator: ".",
+    pathBase: 1,
+  };
+  assert.equal(core.parseLine("  1.1、A", { scheme }).level, 2);
+  assert.equal(core.parseLine("    1.1.1、B", { scheme }).level, 3);
+  assert.equal(tab("一、A", 0, 1, { scheme }), null); // {cn} 不在该方案里
+});
+
+test("自定义：示例块按层级渲染", () => {
+  assert.deepEqual(core.schemeExample(core.PRESETS.points), [
+    "一、背景与目标",
+    "  1、现状",
+    "  2、存在的问题",
+    "二、下一步安排",
+  ]);
+  assert.deepEqual(core.schemeExample(core.PRESETS.outline), [
+    "一、背景与目标",
+    "  1、现状",
+    "    1.1、具体细节",
+    "  2、存在的问题",
+    "二、下一步安排",
+  ]);
+});
+
+// ---------------------------------------------------------------- 数字工具
 test("中文数字：双向转换", () => {
   const cases = {
     1: "一", 2: "二", 9: "九", 10: "十", 11: "十一", 19: "十九", 20: "二十",

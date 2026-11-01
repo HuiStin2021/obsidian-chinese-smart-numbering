@@ -155,6 +155,19 @@
       }
       .validation { font-size: 12px; color: var(--muted); min-height: 18px; }
       .validation.mod-error { color: #b3261e; }
+      .example {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12.5px;
+        line-height: 1.85;
+        white-space: pre;
+        background: var(--paper);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 10px 12px;
+        overflow-x: auto;
+      }
+      .example-title { font-size: 11px; letter-spacing: 0.08em; color: var(--muted); margin: 6px 0 4px; }
+      .custom-fields label.block { display: flex; flex-direction: column; gap: 4px; }
 
       .buttons { display: flex; gap: 8px; flex-wrap: wrap; }
       button {
@@ -187,8 +200,8 @@
         </p>
         <div class="scheme-bar" id="scheme-bar">
           <button data-scheme="gongwen">公文</button>
-          <button data-scheme="points">分点（微信 / IM）</button>
-          <button data-scheme="outline">多级（邮件 1.1、）</button>
+          <button data-scheme="points">微信 / IM</button>
+          <button data-scheme="outline">邮件</button>
           <button data-scheme="custom">自定义</button>
         </div>
       </header>
@@ -210,21 +223,45 @@
           <div class="card">
             <h2>当前方案</h2>
             <ul class="levels" id="level-list"></ul>
+            <div class="example-title">配置后长这样</div>
+            <div class="example" id="scheme-example"></div>
           </div>
 
           <div class="card" id="custom-card" hidden>
             <h2>自定义模板</h2>
             <div class="custom-fields">
-              <textarea id="custom-levels" spellcheck="false"></textarea>
-              <div class="validation" id="validation"></div>
-              <label>每级缩进 <input type="number" id="custom-indent" min="0" max="8" step="1" /> 格</label>
               <label>
-                编号方式
+                当前使用
                 <select id="custom-numbering">
-                  <option value="independent">独立（1、2、3）</option>
-                  <option value="hierarchical">多级（1.1、1.1.1）</option>
+                  <option value="independent">独立编号（1、2、3）</option>
+                  <option value="hierarchical">多级标号（1.1、1.1.1）</option>
                 </select>
               </label>
+
+              <label class="block">
+                独立编号 · 每行一级
+                <textarea id="custom-levels" spellcheck="false"></textarea>
+              </label>
+              <label>每级缩进 <input type="number" id="custom-indent" min="0" max="8" step="1" /> 格</label>
+              <div class="validation" id="validation"></div>
+              <div class="example" id="example-single"></div>
+
+              <label class="block">
+                多级标号 · 每行一级
+                <textarea id="custom-multi-levels" spellcheck="false"></textarea>
+              </label>
+              <label>每级缩进 <input type="number" id="custom-multi-indent" min="0" max="8" step="1" /> 格</label>
+              <label>
+                路径从第几级开始
+                <select id="custom-path-base">
+                  <option value="1">第 1 级（1.1、 1.1.1、）</option>
+                  <option value="2">第 2 级（1、→ 1.1、）</option>
+                  <option value="3">第 3 级</option>
+                </select>
+              </label>
+              <label>分隔符 <input type="text" id="custom-separator" size="3" /></label>
+              <div class="validation" id="validation-multi"></div>
+              <div class="example" id="example-multi"></div>
             </div>
             <p class="note">占位符：{cn} 中文数字、{n} 阿拉伯数字、{c} 圈号、{p} 多级路径。</p>
           </div>
@@ -261,9 +298,9 @@
             <h2>可以试这些</h2>
             <ul class="tips" id="tips">
               <li>「公文」：在「1、加强组织领导」末尾回车 → 出现「2、」。</li>
-              <li>「分点」：Tab 会缩进 2 格，再回车保持缩进。</li>
-              <li>「多级」：一、下面按 Tab → 1.1、；再按 Tab → 1.1.1、。</li>
-              <li>「自定义」：把模板改成「第{n}条」试试。</li>
+              <li>「微信 / IM」：一级一、，Tab 变二级 1、，每级缩进 2 格。</li>
+              <li>「邮件」：一、 → Tab 1、 → Tab 1.1、；回车 / Tab 后整块自动重排。</li>
+              <li>「自定义」：独立编号与多级标号各一套模板，示例实时跟着变。</li>
             </ul>
           </div>
         </aside>
@@ -281,8 +318,15 @@
       const customCard = document.getElementById("custom-card");
       const customLevelsEl = document.getElementById("custom-levels");
       const customIndentEl = document.getElementById("custom-indent");
+      const customMultiLevelsEl = document.getElementById("custom-multi-levels");
+      const customMultiIndentEl = document.getElementById("custom-multi-indent");
+      const customPathBaseEl = document.getElementById("custom-path-base");
+      const customSeparatorEl = document.getElementById("custom-separator");
       const customNumberingEl = document.getElementById("custom-numbering");
       const validationEl = document.getElementById("validation");
+      const validationMultiEl = document.getElementById("validation-multi");
+      const exampleSingleEl = document.getElementById("example-single");
+      const exampleMultiEl = document.getElementById("example-multi");
 
       const SAMPLES = {
         gongwen: [
@@ -298,41 +342,50 @@
         ].join("\n"),
         points: [
           "一、背景与目标",
-          "二、重点任务",
-          "  1、市场侧",
-          "  2、产品侧",
-          "三、下一步安排",
+          "  1、市场侧先跑通",
+          "  2、产品侧补口径",
+          "二、下一步安排",
         ].join("\n"),
         outline: [
           "一、背景",
-          "  1.1、现状",
-          "  1.2、问题",
+          "  1、现状",
+          "    1.1、试点门店",
+          "    1.2、数据口径",
+          "  2、问题",
+          "    2.1、核销滞后",
           "二、方案",
-          "  2.1、总体思路",
-          "    2.1.1、第一阶段",
+          "  1、总体思路",
+          "    1.1、第一阶段",
         ].join("\n"),
       };
 
       let activeId = "gongwen";
       const custom = {
+        numbering: "independent",
         levels: core.PRESETS.gongwen.levels.slice(),
         indent: 0,
-        numbering: "independent",
-        separator: ".",
+        multiLevels: core.PRESETS.outline.levels.slice(),
+        multiIndent: 2,
+        multiSeparator: ".",
+        pathBase: 2,
       };
 
+      function groupScheme(kind) {
+        const multi = kind === "hierarchical";
+        return {
+          id: "custom",
+          name: "自定义",
+          levels: (multi ? custom.multiLevels : custom.levels).slice(),
+          indent: multi ? custom.multiIndent : custom.indent,
+          numbering: kind,
+          separator: custom.multiSeparator || ".",
+          pathBase: multi ? custom.pathBase : 1,
+        };
+      }
+
       function rawScheme() {
-        if (activeId === "custom") {
-          return {
-            id: "custom",
-            name: "自定义",
-            levels: custom.levels.slice(),
-            indent: custom.indent,
-            numbering: custom.numbering,
-            separator: custom.separator,
-          };
-        }
-        return core.PRESETS[activeId];
+        if (activeId !== "custom") return core.PRESETS[activeId];
+        return groupScheme(custom.numbering);
       }
 
       const settings = Object.assign({}, core.DEFAULTS);
@@ -342,6 +395,37 @@
         validation = core.validateScheme(rawScheme());
         settings.scheme = validation.ok ? rawScheme() : core.PRESETS.gongwen;
         renderScheme();
+      }
+
+      function splitLevels(text) {
+        return text
+          .split("\n")
+          .map((line) => line.trim())
+          .filter(Boolean);
+      }
+
+      function clampIndent(value) {
+        return Math.min(8, Math.max(0, Number(value) || 0));
+      }
+
+      function fillExample(el, scheme) {
+        if (!el) return;
+        try {
+          el.textContent = core.schemeExample(scheme).join("\n");
+          el.classList.remove("mod-error");
+        } catch (error) {
+          el.textContent = "模板有误：" + error.message;
+        }
+      }
+
+      function showValidation(el, scheme) {
+        const result = core.validateScheme(scheme);
+        el.classList.toggle("mod-error", !result.ok);
+        el.textContent = result.ok ? "✔ 模板可用" : "✖ " + result.errors[0];
+      }
+
+      function setValueIfIdle(el, value) {
+        if (document.activeElement !== el && el.value !== value) el.value = value;
       }
 
       function renderScheme() {
@@ -362,15 +446,27 @@
           li.append(name, code);
           levelListEl.append(li);
         });
+        fillExample(document.getElementById("scheme-example"), settings.scheme);
 
         validationEl.classList.toggle("mod-error", !validation.ok);
         validationEl.textContent = validation.ok
           ? "✔ 模板可用"
           : "✖ " + validation.errors[0];
 
-        customLevelsEl.value = custom.levels.join("\n");
-        customIndentEl.value = String(custom.indent);
+        setValueIfIdle(customLevelsEl, custom.levels.join("\n"));
+        setValueIfIdle(customIndentEl, String(custom.indent));
+        setValueIfIdle(customMultiLevelsEl, custom.multiLevels.join("\n"));
+        setValueIfIdle(customMultiIndentEl, String(custom.multiIndent));
+        setValueIfIdle(customSeparatorEl, custom.multiSeparator);
         customNumberingEl.value = custom.numbering;
+        customPathBaseEl.value = String(custom.pathBase);
+
+        const single = groupScheme("independent");
+        const multi = groupScheme("hierarchical");
+        showValidation(validationMultiEl, multi);
+        fillExample(exampleSingleEl, single);
+        fillExample(exampleMultiEl, multi);
+
         updateStatus();
       }
 
@@ -446,14 +542,27 @@
       });
 
       customLevelsEl.addEventListener("input", () => {
-        custom.levels = customLevelsEl.value
-          .split("\n")
-          .map((line) => line.trim())
-          .filter(Boolean);
+        custom.levels = splitLevels(customLevelsEl.value);
         syncScheme();
       });
       customIndentEl.addEventListener("input", () => {
-        custom.indent = Math.min(8, Math.max(0, Number(customIndentEl.value) || 0));
+        custom.indent = clampIndent(customIndentEl.value);
+        syncScheme();
+      });
+      customMultiLevelsEl.addEventListener("input", () => {
+        custom.multiLevels = splitLevels(customMultiLevelsEl.value);
+        syncScheme();
+      });
+      customMultiIndentEl.addEventListener("input", () => {
+        custom.multiIndent = clampIndent(customMultiIndentEl.value);
+        syncScheme();
+      });
+      customPathBaseEl.addEventListener("change", () => {
+        custom.pathBase = Number(customPathBaseEl.value) || 1;
+        syncScheme();
+      });
+      customSeparatorEl.addEventListener("input", () => {
+        custom.multiSeparator = customSeparatorEl.value.trim() || ".";
         syncScheme();
       });
       customNumberingEl.addEventListener("change", () => {
@@ -465,7 +574,7 @@
 
       document.getElementById("btn-sample").addEventListener("click", () => {
         const text = SAMPLES[activeId];
-        ta.value = text || core.schemeSample(settings.scheme).map((s) => s + "示例内容").join("\n");
+        ta.value = text || core.schemeExample(settings.scheme).join("\n");
         ta.focus();
         const anchor = Math.min(ta.value.length, ta.value.indexOf("\n") + 1 || ta.value.length);
         ta.setSelectionRange(anchor, anchor);
@@ -496,7 +605,7 @@
       ta.value = SAMPLES.gongwen;
       const anchor = ta.value.indexOf("（一）指导思想") + "（一）指导思想".length;
       ta.setSelectionRange(anchor, anchor);
-      renderScheme();
+      syncScheme();
     </script>
   </body>
 </html>

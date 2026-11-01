@@ -8,9 +8,13 @@
  *   {cn} 中文数字    {n} 阿拉伯数字    {c} 圈号    {p} 多级路径（1.1 / 1.1.1）
  *
  * 内置方案：
- *   公文            一、 （一） 1、 （1） ①
- *   分点（微信/IM） 一、 1、 （1） ①        每级缩进 2 空格
- *   多级（邮件）    一、 1.1、 1.1.1、      每级缩进 2 空格
+ *   公文        一、 （一） 1、 （1） ①        不缩进
+ *   微信 / IM   一、 1、                      每级缩进 2 空格
+ *   邮件        一、 1、 1.1、                每级缩进 2 空格（路径从第 2 级起算）
+ *
+ * pathBase 表示“多级路径从第几级开始算第一段”：
+ *   pathBase = 1 → 第 2 级写成 1.1、（路径含一级序号）
+ *   pathBase = 2 → 第 2 级仍是 1、，第 3 级才是 1.1、（路径从二级起算）
  */
 (function (root, factory) {
   if (typeof module === "object" && module.exports) {
@@ -45,22 +49,25 @@
       indent: 0,
       numbering: "independent",
       separator: ".",
+      pathBase: 1,
     },
     points: {
       id: "points",
-      name: "分点（微信 / IM）",
-      levels: ["{cn}、", "{n}、", "（{n}）", "{c}"],
+      name: "微信 / IM",
+      levels: ["{cn}、", "{n}、"],
       indent: 2,
       numbering: "independent",
       separator: ".",
+      pathBase: 1,
     },
     outline: {
       id: "outline",
-      name: "多级（邮件 1.1、）",
-      levels: ["{cn}、", "{p}、", "{p}、"],
+      name: "邮件",
+      levels: ["{cn}、", "{n}、", "{p}、"],
       indent: 2,
       numbering: "hierarchical",
       separator: ".",
+      pathBase: 2,
     },
   };
 
@@ -164,17 +171,22 @@
     return null;
   }
 
-  function placeholderSource(kind, index, separator) {
+  function placeholderSource(kind, index, separator, segments) {
     if (kind === "cn") return CN_RE;
     if (kind === "c") return "[①-⑳]";
     if (kind === "n") return "\\d{1,3}(?!\\d)";
-    // {p}：第 k 级匹配恰好 k 段路径
+    // {p}：按 pathBase 算出的段数精确匹配（如 pathBase=2、第 3 级 → 两段 1.1）
     const sep = separator || ".";
     const sepEscaped = escapeRegex(sep);
     return (
-      "\\d{1,3}(?:" + sepEscaped + "\\d{1,3}){" + index + "}" +
+      "\\d{1,3}(?:" + sepEscaped + "\\d{1,3}){" + (segments - 1) + "}" +
       "(?!\\d)(?!" + sepEscaped + "\\d)"
     );
+  }
+
+  /** {p} 在某一级需要几段路径；pathBase=1 时第 k 级 k 段，pathBase=2 时第 k 级 k-1 段 */
+  function pathSegments(levelIndex, pathBase) {
+    return levelIndex + 2 - (pathBase || 1);
   }
 
   function compileLevel(template, index, scheme) {
@@ -187,20 +199,32 @@
     if (kind === "p" && scheme.numbering !== "hierarchical") {
       throw new Error("第 " + (index + 1) + " 级使用了 {p}，需要把编号方式设为“多级”");
     }
+    const segments = kind === "p" ? pathSegments(index, scheme.pathBase) : 0;
+    if (kind === "p" && segments < 1) {
+      throw new Error(
+        "第 " + (index + 1) + " 级在多级路径起点之前，不能用 {p}（路径起点是第 " +
+          (scheme.pathBase || 1) + " 级）"
+      );
+    }
 
     let source = "^";
     for (const part of parts) {
       source += part.type === "literal"
         ? literalSource(part.ch)
-        : "(" + placeholderSource(kind, index, scheme.separator) + ")";
+        : "(" + placeholderSource(kind, index, scheme.separator, segments) + ")";
     }
 
     return {
       template,
       kind,
       index,
+      segments,
       regex: new RegExp(source, "d"),
       markdownLike: template.trim() === "{n}.",
+      /** 示例取值：多级路径按段数补 1 */
+      sampleValue() {
+        return kind === "p" ? new Array(segments).fill(1) : 1;
+      },
       canonical(value) {
         const formatted = formatValue(kind, value, scheme);
         if (formatted == null) return null;
@@ -269,6 +293,14 @@
     if (typeof raw.indent !== "number" || raw.indent < 0 || raw.indent > 8) {
       errors.push("缩进需要在 0–8 之间");
     }
+    const pathBase = raw.pathBase == null ? 1 : raw.pathBase;
+    if (
+      !Number.isInteger(pathBase) ||
+      pathBase < 1 ||
+      pathBase > Math.max(1, raw.levels.length)
+    ) {
+      errors.push("多级路径起点需要在 1–" + Math.max(1, raw.levels.length) + " 之间");
+    }
     if (errors.length === 0) {
       try {
         const compiled = compileScheme(raw);
@@ -293,10 +325,37 @@
   function schemeSample(raw) {
     const scheme = compileScheme(raw);
     return scheme.levels.map((level, index) => {
-      const value = level.kind === "p" ? new Array(index + 1).fill(1) : 1;
-      const token = level.canonical(value) || "";
+      const token = level.canonical(level.sampleValue()) || "";
       return " ".repeat((raw.indent || 0) * index) + token;
     });
+  }
+
+  const EXAMPLE_TEXT = ["背景与目标", "现状", "具体细节", "存在的问题", "下一步安排"];
+
+  /**
+   * 生成一段“配置后的样子”：三级嵌套 + 同级第二条 + 回到上级，用户一眼能看出续号与层级。
+   * 返回字符串数组，交给设置页 / demo 直接渲染。
+   */
+  function schemeExample(raw) {
+    const scheme = compileScheme(raw);
+    const unit = " ".repeat(scheme.indent || 0);
+    const depth = Math.min(scheme.levels.length, 3);
+    const lines = [];
+
+    function line(level, value, text) {
+      const target = scheme.levels[level - 1];
+      if (!target) return;
+      const token = target.canonical(value);
+      if (!token) return;
+      lines.push(unit.repeat(level - 1) + token + text);
+    }
+
+    line(1, 1, EXAMPLE_TEXT[0]);
+    if (depth >= 2) line(2, 1, EXAMPLE_TEXT[1]);
+    if (depth >= 3) line(3, scheme.levels[2].sampleValue(), EXAMPLE_TEXT[2]);
+    if (depth >= 2) line(2, 2, EXAMPLE_TEXT[3]);
+    line(1, 2, EXAMPLE_TEXT[4]);
+    return lines;
   }
 
   function lineStarts(text) {
@@ -459,8 +518,13 @@
     const targetLevel = scheme.levels[target - 1];
     let value;
     if (targetLevel.kind === "p") {
-      const base = Array.isArray(parsed.path) ? parsed.path.slice(0, target - 1) : [];
-      while (base.length < target - 1) base.push(1);
+      const pathBase = scheme.pathBase || 1;
+      const width = Math.max(0, target - pathBase);
+      const base = Array.isArray(parsed.path) ? parsed.path.slice(0, width) : [];
+      while (base.length < width) base.push(1);
+      // 当前行正好是目标级的父级时，用它的序号当路径首段（如 2、 → 2.1、）
+      const offset = parsed.level - pathBase;
+      if (offset >= 0 && offset < base.length) base[offset] = parsed.number;
       value = base.concat([1]);
     } else {
       const lines = text.split("\n");
@@ -514,6 +578,7 @@
     const o = merge(opts);
     const scheme = compileScheme(o.scheme);
     const hierarchical = scheme.numbering === "hierarchical";
+    const pathBase = scheme.pathBase || 1;
     const levelCount = scheme.levels.length;
     const lines = text.split("\n");
     const caret = locateLine(text, pos);
@@ -542,8 +607,9 @@
       if (hierarchical) {
         if (!seeded) {
           if (parsed.kind === "p") {
-            parsed.path.forEach((n, index) => {
-              if (index + 1 <= levelCount) counters[index + 1] = n;
+            parsed.path.forEach((n, offset) => {
+              const target2 = pathBase + offset;
+              if (target2 <= levelCount) counters[target2] = n;
             });
           } else {
             counters[level] = parsed.number;
@@ -552,11 +618,11 @@
         } else {
           counters[level] += 1;
         }
-        for (let parent = 1; parent < level; parent++) {
+        for (let parent = pathBase; parent < level; parent++) {
           if (!counters[parent]) counters[parent] = 1;
         }
         value = scheme.levels[level - 1].kind === "p"
-          ? counters.slice(1, level + 1)
+          ? counters.slice(pathBase, level + 1)
           : counters[level];
       } else {
         if (!startNumbers.has(level)) startNumbers.set(level, parsed.number);
@@ -603,6 +669,7 @@
     compileScheme,
     validateScheme,
     schemeSample,
+    schemeExample,
     parseLine,
     buildMarker,
     handleEnter,

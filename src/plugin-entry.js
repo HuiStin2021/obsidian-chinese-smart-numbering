@@ -19,18 +19,24 @@ const SCNCore = (function () {
 
 const SCHEME_SHORT_NAME = {
   gongwen: "公文",
-  points: "分点",
-  outline: "多级",
+  points: "微信",
+  outline: "邮件",
   custom: "自定义",
 };
 
 const DEFAULT_SETTINGS = {
   enabled: true,
   schemeId: SCNCore.DEFAULT_SCHEME_ID,
+  // 自定义 · 独立编号（1、2、3 平铺）
   customLevels: SCNCore.PRESETS.gongwen.levels.slice(),
   customIndent: 0,
+  // 自定义 · 多级标号（1.1、1.1.1）
+  customMultiLevels: SCNCore.PRESETS.outline.levels.slice(),
+  customMultiIndent: 2,
+  customMultiSeparator: ".",
+  customPathBase: 2,
+  // 当前用哪一套
   customNumbering: "independent",
-  customSeparator: ".",
   continueOnEnter: true,
   tabSwitch: true,
   backspaceDelete: true,
@@ -73,8 +79,8 @@ class SmartChineseNumberingPlugin extends Plugin {
 
     for (const [id, label] of [
       ["gongwen", "使用公文编号"],
-      ["points", "使用分点编号（微信 / IM）"],
-      ["outline", "使用多级编号（邮件 1.1、）"],
+      ["points", "使用微信 / IM 编号"],
+      ["outline", "使用邮件编号（1、 + 1.1、）"],
       ["custom", "使用自定义编号"],
     ]) {
       this.addCommand({
@@ -108,17 +114,19 @@ class SmartChineseNumberingPlugin extends Plugin {
   // ------------------------------------------------------------ 方案
 
   resolveScheme() {
-    if (this.settings.schemeId === "custom") {
-      return {
-        id: "custom",
-        name: "自定义",
-        levels: this.settings.customLevels,
-        indent: this.settings.customIndent,
-        numbering: this.settings.customNumbering,
-        separator: this.settings.customSeparator || ".",
-      };
+    if (this.settings.schemeId !== "custom") {
+      return SCNCore.PRESETS[this.settings.schemeId] || SCNCore.PRESETS[SCNCore.DEFAULT_SCHEME_ID];
     }
-    return SCNCore.PRESETS[this.settings.schemeId] || SCNCore.PRESETS[SCNCore.DEFAULT_SCHEME_ID];
+    const multi = this.settings.customNumbering === "hierarchical";
+    return {
+      id: "custom",
+      name: "自定义",
+      levels: multi ? this.settings.customMultiLevels : this.settings.customLevels,
+      indent: multi ? this.settings.customMultiIndent : this.settings.customIndent,
+      numbering: this.settings.customNumbering,
+      separator: this.settings.customMultiSeparator || ".",
+      pathBase: multi ? this.settings.customPathBase || 1 : 1,
+    };
   }
 
   rebuildRuntime() {
@@ -149,7 +157,7 @@ class SmartChineseNumberingPlugin extends Plugin {
     this.statusEl.setText("编号：" + this.schemeName());
     this.statusEl.setAttr(
       "aria-label",
-      "点击切换编号方案（公文 / 分点 / 多级 / 自定义）"
+      "点击切换编号方案（公文 / 微信 / 邮件 / 自定义）"
     );
   }
 
@@ -157,8 +165,8 @@ class SmartChineseNumberingPlugin extends Plugin {
     const menu = new Menu();
     const options = [
       ["gongwen", "公文：一、 （一） 1、 （1） ①"],
-      ["points", "分点（微信 / IM）：一、 1、 （1） ①，缩进 2"],
-      ["outline", "多级（邮件）：一、 1.1、 1.1.1、，缩进 2"],
+      ["points", "微信 / IM：一、 → 1、，每级缩进 2"],
+      ["outline", "邮件：一、 → 1、 → 1.1、，每级缩进 2"],
       ["custom", "自定义模板"],
     ];
     for (const [id, title] of options) {
@@ -271,8 +279,21 @@ class SmartChineseNumberingPlugin extends Plugin {
       settings.customIndent = typeof data.indentWidth === "number" ? data.indentWidth : 2;
       settings.customNumbering = "independent";
     }
+    // 旧版只有一个 customSeparator，迁移到多级标号的分隔符
+    if (data.customSeparator && !data.customMultiSeparator) {
+      settings.customMultiSeparator = data.customSeparator;
+    }
+    if (!Array.isArray(settings.customMultiLevels) || !settings.customMultiLevels.length) {
+      settings.customMultiLevels = SCNCore.PRESETS.outline.levels.slice();
+    }
+    if (!Array.isArray(settings.customLevels) || !settings.customLevels.length) {
+      settings.customLevels = SCNCore.PRESETS.gongwen.levels.slice();
+    }
+    const base = Number(settings.customPathBase);
+    settings.customPathBase = base === 2 || base === 3 ? base : 1;
     delete settings.indentOnTab;
     delete settings.indentWidth;
+    delete settings.customSeparator;
     this.settings = settings;
     this.rebuildRuntime();
   }
@@ -289,6 +310,7 @@ class SmartChineseNumberingSettingTab extends PluginSettingTab {
     super(app, plugin);
     this.plugin = plugin;
     this.saveTimer = null;
+    this.dynamic = [];
   }
 
   refresh() {
@@ -297,15 +319,18 @@ class SmartChineseNumberingSettingTab extends PluginSettingTab {
     }
   }
 
-  customScheme() {
+  /** 自定义方案里指定的一套（independent / hierarchical） */
+  customSchemeOf(kind) {
     const settings = this.plugin.settings;
+    const multi = kind === "hierarchical";
     return {
       id: "custom",
       name: "自定义",
-      levels: settings.customLevels,
-      indent: settings.customIndent,
-      numbering: settings.customNumbering,
-      separator: settings.customSeparator || ".",
+      levels: multi ? settings.customMultiLevels : settings.customLevels,
+      indent: multi ? settings.customMultiIndent : settings.customIndent,
+      numbering: kind,
+      separator: settings.customMultiSeparator || ".",
+      pathBase: multi ? settings.customPathBase || 1 : 1,
     };
   }
 
@@ -314,44 +339,65 @@ class SmartChineseNumberingSettingTab extends PluginSettingTab {
     this.saveTimer = window.setTimeout(async () => {
       this.saveTimer = null;
       await this.plugin.saveSettings();
-      this.renderValidation();
-      this.renderPreview();
+      this.refreshDynamic();
     }, 400);
   }
 
-  renderValidation() {
-    if (!this.validationEl) return;
-    const validation = SCNCore.validateScheme(this.customScheme());
-    if (validation.ok) {
-      this.validationEl.setText(
-        "✔ 模板可用" + (validation.warnings.length ? "（" + validation.warnings.join("；") + "）" : "")
-      );
-      this.validationEl.removeClass("mod-error");
-    } else {
-      this.validationEl.setText("✖ " + validation.errors[0]);
-      this.validationEl.addClass("mod-error");
+  /** 登记一块“随配置变化”的区域，输入时只刷新它，避免整页重绘抢光标 */
+  track(exampleEl, getScheme, validationEl) {
+    this.dynamic.push({ exampleEl, getScheme, validationEl });
+  }
+
+  refreshDynamic() {
+    for (const item of this.dynamic) {
+      let scheme = null;
+      try {
+        scheme = item.getScheme();
+      } catch (error) {
+        scheme = null;
+      }
+      if (scheme) {
+        this.renderValidation(item.validationEl, scheme);
+        this.renderExample(item.exampleEl, scheme);
+      }
     }
   }
 
-  renderPreview() {
-    if (!this.previewEl) return;
-    this.previewEl.empty();
-    const scheme = this.plugin.effectiveScheme || SCNCore.PRESETS.gongwen;
-    let samples;
+  renderValidation(el, scheme) {
+    if (!el) return;
+    const validation = SCNCore.validateScheme(scheme);
+    if (validation.ok) {
+      el.setText(
+        "✔ 模板可用" + (validation.warnings.length ? "（" + validation.warnings.join("；") + "）" : "")
+      );
+      el.removeClass("mod-error");
+    } else {
+      el.setText("✖ " + validation.errors[0]);
+      el.addClass("mod-error");
+    }
+  }
+
+  renderExample(el, scheme) {
+    if (!el) return;
+    el.empty();
+    let lines;
     try {
-      samples = SCNCore.schemeSample(scheme);
+      lines = SCNCore.schemeExample(scheme);
     } catch (error) {
-      samples = SCNCore.schemeSample(SCNCore.PRESETS.gongwen);
+      const bad = el.createDiv({ cls: "scn-example-body mod-error" });
+      bad.createDiv({ text: "模板有误：" + error.message });
+      return;
     }
-    for (const sample of samples) {
-      this.previewEl.createDiv({ text: sample + "示例内容" });
-    }
+    el.createDiv({ text: "配置后长这样", cls: "scn-example-title" });
+    const body = el.createDiv({ cls: "scn-example-body" });
+    for (const line of lines) body.createDiv({ text: line });
   }
 
   display() {
     const { containerEl } = this;
     const settings = this.plugin.settings;
     containerEl.empty();
+    this.dynamic = [];
 
     containerEl.createEl("h2", { text: "中文智能编号" });
     containerEl.createEl("p", {
@@ -361,23 +407,24 @@ class SmartChineseNumberingSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("编号方案")
-      .setDesc("公文用「公文」；微信 / 即时消息用「分点」；邮件 / 周报用「多级（1.1、）」。")
+      .setDesc("公文＝一、（一）1、；微信 / IM＝一、→ 1、；邮件＝一、→ 1、→ 1.1、。")
       .addDropdown((dropdown) =>
         dropdown
-          .addOption("gongwen", "公文")
-          .addOption("points", "分点（微信 / IM）")
-          .addOption("outline", "多级（邮件 1.1、）")
+          .addOption("gongwen", "公文：一、 （一） 1、 （1） ①")
+          .addOption("points", "微信 / IM：一、 → 1、")
+          .addOption("outline", "邮件：一、 → 1、 → 1.1、")
           .addOption("custom", "自定义")
           .setValue(settings.schemeId)
           .onChange(async (value) => {
-            this.plugin.settings.schemeId = value;
+            settings.schemeId = value;
             await this.plugin.saveSettings();
             this.display();
           })
       );
 
-    this.previewEl = containerEl.createDiv({ cls: "scn-preview" });
-    this.renderPreview();
+    const activeExample = containerEl.createDiv({ cls: "scn-example" });
+    this.renderExample(activeExample, this.plugin.effectiveScheme);
+    this.track(activeExample, () => this.plugin.effectiveScheme, null);
 
     new Setting(containerEl)
       .setName("启用插件")
@@ -439,103 +486,177 @@ class SmartChineseNumberingSettingTab extends PluginSettingTab {
         })
       );
 
-    containerEl.createEl("h3", { text: "自定义方案（方案选择「自定义」时生效）" });
+    if (settings.schemeId === "custom") {
+      this.renderCustomSection(containerEl);
+    } else {
+      containerEl.createEl("h3", { text: "自定义方案" });
+      containerEl.createEl("p", {
+        text: "开启后可以分别设置「独立编号」和「多级标号」两套写法，并实时预览配置结果。",
+        cls: "setting-item-description",
+      });
+      new Setting(containerEl)
+        .setName("启用自定义方案")
+        .setDesc("自定义模板只在选择「自定义」方案时生效。")
+        .addButton((button) =>
+          button.setButtonText("开启自定义").onClick(async () => {
+            settings.schemeId = "custom";
+            await this.plugin.saveSettings();
+            this.display();
+          })
+        );
+    }
+
+    containerEl.createEl("h4", { text: "使用提示" });
+    const tips = containerEl.createEl("ul");
+    tips.createEl("li", { text: "输入「1、」后写正文，回车即得「2、」；再回车得「3、」。" });
+    tips.createEl("li", { text: "微信方案只有两级：一、 →（Tab）1、，每级缩进 2 格。" });
+    tips.createEl("li", { text: "邮件方案三级：一、 →（Tab）1、 →（Tab）1.1、；回车 / Tab 后整块自动重排。" });
+    tips.createEl("li", { text: "空的编号行回车退出编号；光标在编号后按退格可整段删掉编号。" });
+    tips.createEl("li", { text: "状态栏「编号：公文」点一下可直接切换方案。" });
+    tips.createEl("li", { text: "中文输入法组词时插件不介入，回车选词不受影响。" });
+  }
+
+  renderCustomSection(containerEl) {
+    const settings = this.plugin.settings;
+    containerEl.createEl("h3", { text: "自定义方案" });
     containerEl.createEl("p", {
-      text: CUSTOM_LEVEL_HINT,
+      text: "两套写法各自独立配置，「当前使用」决定哪一套生效；下面会实时显示配置后的样子。",
       cls: "setting-item-description",
     });
 
     new Setting(containerEl)
-      .setName("层级模板")
-      .setDesc("示例：{cn}、 / （{cn}） / {n}、 / （{n}） / {c}；多级用 {p}、。")
+      .setName("当前使用")
+      .setDesc("独立编号＝平铺递进（1、2、3）；多级标号＝带层级路径（1.1、1.1.1）。")
+      .addDropdown((dropdown) =>
+        dropdown
+          .addOption("independent", "独立编号")
+          .addOption("hierarchical", "多级标号")
+          .setValue(settings.customNumbering)
+          .onChange(async (value) => {
+            settings.customNumbering = value;
+            await this.plugin.saveSettings();
+            this.display();
+          })
+      );
+
+    this.renderCustomGroup(containerEl, "independent");
+    this.renderCustomGroup(containerEl, "hierarchical");
+  }
+
+  renderCustomGroup(containerEl, kind) {
+    const settings = this.plugin.settings;
+    const multi = kind === "hierarchical";
+    const active = settings.customNumbering === kind;
+    const group = containerEl.createDiv({ cls: "scn-group" });
+
+    group.createEl("h4", {
+      text: (multi ? "多级标号" : "独立编号") + (active ? "（当前生效）" : "（未生效）"),
+    });
+    group.createEl("p", { text: CUSTOM_LEVEL_HINT, cls: "setting-item-description" });
+
+    new Setting(group)
+      .setName(multi ? "多级层级模板" : "独立层级模板")
+      .setDesc(
+        multi
+          ? "示例：{cn}、 / {n}、 / {p}、；{p} 是路径，段数由「路径从第几级开始」决定。"
+          : "示例：{cn}、 / （{cn}） / {n}、 / （{n}） / {c}；每行一级。"
+      )
       .addTextArea((area) => {
         area
-          .setValue(settings.customLevels.join("\n"))
+          .setValue((multi ? settings.customMultiLevels : settings.customLevels).join("\n"))
           .onChange((value) => {
-            settings.customLevels = value
+            const levels = value
               .split("\n")
               .map((line) => line.trim())
               .filter((line) => line.length > 0);
+            if (multi) settings.customMultiLevels = levels;
+            else settings.customLevels = levels;
             this.scheduleSave();
           });
         area.inputEl.rows = 6;
         area.inputEl.addClass("scn-templates");
       });
 
-    this.validationEl = containerEl.createDiv({ cls: "scn-validation" });
-    this.renderValidation();
+    const validationEl = group.createDiv({ cls: "scn-validation" });
+    const exampleEl = group.createDiv({ cls: "scn-example" });
+    const getScheme = () => this.customSchemeOf(kind);
+    this.renderValidation(validationEl, getScheme());
+    this.renderExample(exampleEl, getScheme());
+    this.track(exampleEl, getScheme, validationEl);
 
-    new Setting(containerEl)
-      .setName("编号方式")
-      .setDesc("独立：1、2、3；多级：1.1、1.1.1（需要 {p} 占位符）。")
-      .addDropdown((dropdown) =>
-        dropdown
-          .addOption("independent", "独立编号")
-          .addOption("hierarchical", "多级编号")
-          .setValue(settings.customNumbering)
-          .onChange(async (value) => {
-            settings.customNumbering = value;
-            await this.plugin.saveSettings();
-            this.renderValidation();
-            this.renderPreview();
-          })
-      );
-
-    new Setting(containerEl)
+    new Setting(group)
       .setName("每级缩进（空格）")
-      .setDesc("每下沉一级增加的缩进；公文一般填 0，邮件 / IM 填 2。")
+      .setDesc("每下沉一级增加的缩进；公文式一般 0，消息 / 邮件式常用 2。")
       .addSlider((slider) =>
         slider
           .setLimits(0, 8, 1)
-          .setValue(settings.customIndent)
+          .setValue(multi ? settings.customMultiIndent : settings.customIndent)
           .setDynamicTooltip()
           .onChange(async (value) => {
-            settings.customIndent = value;
+            if (multi) settings.customMultiIndent = value;
+            else settings.customIndent = value;
             await this.plugin.saveSettings();
-            this.renderPreview();
+            this.refreshDynamic();
           })
       );
 
-    new Setting(containerEl)
-      .setName("多级分隔符")
-      .setDesc("仅多级编号使用，默认「.」，可改成「-」等。")
-      .addText((text) =>
-        text.setValue(settings.customSeparator).onChange((value) => {
-          settings.customSeparator = value.trim() || ".";
-          this.scheduleSave();
-        })
-      );
+    if (multi) {
+      new Setting(group)
+        .setName("路径从第几级开始")
+        .setDesc("第 1 级：第 2 级就写成 1.1、；第 2 级：第 2 级是 1、，第 3 级才是 1.1、。")
+        .addDropdown((dropdown) =>
+          dropdown
+            .addOption("1", "第 1 级（1.1、 1.1.1、）")
+            .addOption("2", "第 2 级（1、→ 1.1、）")
+            .addOption("3", "第 3 级")
+            .setValue(String(settings.customPathBase || 1))
+            .onChange(async (value) => {
+              settings.customPathBase = Number(value) || 1;
+              await this.plugin.saveSettings();
+              this.display();
+            })
+        );
 
-    new Setting(containerEl)
-      .setName("快捷模板")
+      new Setting(group)
+        .setName("多级分隔符")
+        .setDesc("默认「.」，可改成「-」等。")
+        .addText((text) =>
+          text.setValue(settings.customMultiSeparator || ".").onChange((value) => {
+            settings.customMultiSeparator = value.trim() || ".";
+            this.scheduleSave();
+          })
+        );
+    }
+
+    new Setting(group)
+      .setName("快捷操作")
       .addButton((button) =>
-        button.setButtonText("套用纯数字大纲").onClick(async () => {
-          settings.customLevels = ["{n}、", "{p}、", "{p}、"];
-          settings.customNumbering = "hierarchical";
-          settings.customIndent = 2;
-          await this.plugin.saveSettings();
-          this.display();
-        })
+        button
+          .setButtonText(multi ? "恢复邮件式模板" : "恢复公文式模板")
+          .onClick(async () => {
+            if (multi) {
+              settings.customMultiLevels = SCNCore.PRESETS.outline.levels.slice();
+              settings.customMultiIndent = SCNCore.PRESETS.outline.indent;
+              settings.customMultiSeparator = SCNCore.PRESETS.outline.separator;
+              settings.customPathBase = SCNCore.PRESETS.outline.pathBase;
+            } else {
+              settings.customLevels = SCNCore.PRESETS.gongwen.levels.slice();
+              settings.customIndent = SCNCore.PRESETS.gongwen.indent;
+            }
+            await this.plugin.saveSettings();
+            this.display();
+          })
       )
       .addButton((button) =>
-        button.setButtonText("恢复默认模板").onClick(async () => {
-          settings.customLevels = SCNCore.PRESETS.gongwen.levels.slice();
-          settings.customNumbering = "independent";
-          settings.customIndent = 0;
-          settings.customSeparator = ".";
-          await this.plugin.saveSettings();
-          this.display();
-        })
+        button
+          .setButtonText("用这一套")
+          .setDisabled(active)
+          .onClick(async () => {
+            settings.customNumbering = kind;
+            await this.plugin.saveSettings();
+            this.display();
+          })
       );
-
-    containerEl.createEl("h4", { text: "使用提示" });
-    const tips = containerEl.createEl("ul");
-    tips.createEl("li", { text: "输入「1、」后写正文，回车即得「2、」；再回车得「3、」。" });
-    tips.createEl("li", { text: "分点方案：Tab 会同时缩进 2 格，Shift-Tab 缩回去。" });
-    tips.createEl("li", { text: "多级方案：一、 下面自动是 1.1、，再下面是 1.1.1、；回车 / Tab 后整块自动重排。" });
-    tips.createEl("li", { text: "空的编号行回车退出编号；光标在编号后按退格可整段删掉编号。" });
-    tips.createEl("li", { text: "状态栏「编号：公文」点一下可直接切换方案。" });
-    tips.createEl("li", { text: "中文输入法组词时插件不介入，回车选词不受影响。" });
   }
 }
 
