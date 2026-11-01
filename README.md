@@ -1,5 +1,7 @@
 # 中文智能编号 · Smart Chinese Numbering
 
+> An Obsidian plugin for writing Chinese-style numbered outlines — `一、` `1、` `1.1、` — without Markdown hijacking them into `1.`. Four presets (Gongwen / WeChat / Mail / Custom), switchable from the status bar; Enter continues the sequence, Tab changes level.
+
 ![交互演示](demo/screenshot.png)
 
 给 Obsidian 加一套**中文序号**的输入习惯：`1、` 回车就是 `2、`，`一、` 回车就是 `二、`；

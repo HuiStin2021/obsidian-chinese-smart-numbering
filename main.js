@@ -1,5 +1,5 @@
 /*
- * 中文智能编号 (Smart Chinese Numbering) v1.1.1
+ * 中文智能编号 (Smart Chinese Numbering) v1.1.2
  * 本文件由 build.mjs 生成，请勿直接编辑；修改 src/core.js 或 src/plugin-entry.js 后运行 node build.mjs
  */
 "use strict";
