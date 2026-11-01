@@ -1,7 +1,7 @@
 {
   "id": "chinese-smart-numbering",
   "name": "Smart Chinese Numbering",
-  "version": "1.1.3",
+  "version": "1.1.4",
   "minAppVersion": "1.5.0",
   "description": "中文序号：公文 / 微信 / 邮件，支持 1.1 多级与两套自定义模板；回车续号、Tab 换级、自动缩进。Smart numbering for Chinese writers.",
   "author": "Hui",
