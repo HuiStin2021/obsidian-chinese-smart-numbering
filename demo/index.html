@@ -1,0 +1,502 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>中文智能编号 · 交互演示</title>
+    <style>
+      :root {
+        --paper: #fbfaf7;
+        --ink: #1f2328;
+        --muted: #6b6f76;
+        --line: #e4e0d8;
+        --accent: #8c2f2f;
+        --accent-soft: #f3e7e4;
+        --panel: #ffffff;
+        --shadow: 0 1px 2px rgba(31, 35, 40, 0.06), 0 8px 24px rgba(31, 35, 40, 0.06);
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --paper: #1b1c1f;
+          --ink: #e9e6df;
+          --muted: #9a9ea6;
+          --line: #33363c;
+          --accent: #d98a7f;
+          --accent-soft: #2f2523;
+          --panel: #232529;
+          --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.25);
+        }
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--paper);
+        color: var(--ink);
+        font-family: -apple-system, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+        line-height: 1.7;
+      }
+      .wrap { max-width: 1180px; margin: 0 auto; padding: 40px 24px 64px; }
+      header h1 { margin: 0 0 6px; font-size: 26px; letter-spacing: 0.02em; }
+      header p { margin: 0 0 22px; color: var(--muted); font-size: 14px; }
+      header .kbd {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px;
+        padding: 1px 6px;
+        border: 1px solid var(--line);
+        border-bottom-width: 2px;
+        border-radius: 5px;
+        background: var(--panel);
+        color: var(--ink);
+      }
+      .scheme-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+      .scheme-bar button {
+        font: inherit; font-size: 13px;
+        padding: 7px 14px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: var(--panel);
+        color: var(--ink);
+        cursor: pointer;
+      }
+      .scheme-bar button:hover { border-color: var(--accent); color: var(--accent); }
+      .scheme-bar button.is-active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+      .layout { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(300px, 1fr); gap: 24px; align-items: start; }
+      @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+
+      .editor-card {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }
+      .editor-bar {
+        display: flex; align-items: center; justify-content: space-between;
+        gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--line);
+        font-size: 12px; color: var(--muted);
+      }
+      .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); display: inline-block; margin-right: 8px; }
+      #editor {
+        display: block;
+        width: 100%;
+        min-height: 470px;
+        padding: 22px 24px;
+        border: 0;
+        outline: none;
+        resize: vertical;
+        background: transparent;
+        color: var(--ink);
+        font-family: "Songti SC", "STSong", "SimSun", "Noto Serif CJK SC", serif;
+        font-size: 17px;
+        line-height: 1.95;
+        tab-size: 2;
+      }
+      .editor-foot {
+        border-top: 1px solid var(--line);
+        padding: 10px 16px;
+        font-size: 12px;
+        color: var(--muted);
+        display: flex; justify-content: space-between; gap: 12px;
+      }
+      .editor-foot b { color: var(--accent); font-weight: 600; }
+
+      .side { display: flex; flex-direction: column; gap: 16px; }
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 16px 18px;
+        box-shadow: var(--shadow);
+      }
+      .card h2 { margin: 0 0 10px; font-size: 13px; letter-spacing: 0.08em; color: var(--muted); font-weight: 600; text-transform: uppercase; }
+      .status { font-size: 13px; min-height: 40px; }
+      .status code { font-family: ui-monospace, Menlo, monospace; background: var(--accent-soft); color: var(--accent); padding: 1px 6px; border-radius: 4px; }
+      .levels { list-style: none; margin: 0; padding: 0; font-size: 13px; }
+      .levels li { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px dashed var(--line); }
+      .levels li:last-child { border-bottom: 0; }
+      .levels span:last-child { color: var(--muted); font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+
+      .toggles { display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+      .toggles label { display: flex; gap: 8px; align-items: flex-start; cursor: pointer; }
+      .toggles input { margin-top: 5px; accent-color: var(--accent); }
+      .toggles small { display: block; color: var(--muted); font-size: 12px; line-height: 1.5; }
+
+      .custom-fields { display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+      .custom-fields textarea {
+        width: 100%;
+        min-height: 112px;
+        padding: 8px 10px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--paper);
+        color: var(--ink);
+        font-family: ui-monospace, Menlo, monospace;
+        font-size: 13px;
+        line-height: 1.6;
+        resize: vertical;
+      }
+      .custom-fields input[type="number"] {
+        width: 64px;
+        padding: 4px 8px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--paper);
+        color: var(--ink);
+        font: inherit;
+      }
+      .custom-fields select {
+        padding: 4px 8px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--paper);
+        color: var(--ink);
+        font: inherit;
+      }
+      .validation { font-size: 12px; color: var(--muted); min-height: 18px; }
+      .validation.mod-error { color: #b3261e; }
+
+      .buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+      button {
+        font: inherit; font-size: 13px;
+        padding: 7px 12px;
+        border-radius: 8px;
+        border: 1px solid var(--line);
+        background: var(--panel);
+        color: var(--ink);
+        cursor: pointer;
+      }
+      button:hover { border-color: var(--accent); color: var(--accent); }
+      button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+      button.primary:hover { opacity: 0.9; color: #fff; }
+
+      .tips { margin: 0; padding-left: 18px; font-size: 13px; color: var(--muted); }
+      .tips li { margin: 6px 0; }
+      .note { font-size: 12px; color: var(--muted); margin: 14px 0 0; }
+      [hidden] { display: none !important; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <h1>中文智能编号 · 交互演示</h1>
+        <p>
+          和 Obsidian 插件共用同一份核心逻辑。按 <span class="kbd">Enter</span> 续号，
+          <span class="kbd">Tab</span> / <span class="kbd">Shift</span>+<span class="kbd">Tab</span> 换级，
+          在编号后按 <span class="kbd">Backspace</span> 清除编号。
+        </p>
+        <div class="scheme-bar" id="scheme-bar">
+          <button data-scheme="gongwen">公文</button>
+          <button data-scheme="points">分点（微信 / IM）</button>
+          <button data-scheme="outline">多级（邮件 1.1、）</button>
+          <button data-scheme="custom">自定义</button>
+        </div>
+      </header>
+
+      <div class="layout">
+        <section class="editor-card">
+          <div class="editor-bar">
+            <span><span class="dot"></span>未命名文档.md</span>
+            <span id="scheme-name">公文</span>
+          </div>
+          <textarea id="editor" spellcheck="false"></textarea>
+          <div class="editor-foot">
+            <span id="status">把光标放到编号行里</span>
+            <span>空编号行回车 = 退出编号</span>
+          </div>
+        </section>
+
+        <aside class="side">
+          <div class="card">
+            <h2>当前方案</h2>
+            <ul class="levels" id="level-list"></ul>
+          </div>
+
+          <div class="card" id="custom-card" hidden>
+            <h2>自定义模板</h2>
+            <div class="custom-fields">
+              <textarea id="custom-levels" spellcheck="false"></textarea>
+              <div class="validation" id="validation"></div>
+              <label>每级缩进 <input type="number" id="custom-indent" min="0" max="8" step="1" /> 格</label>
+              <label>
+                编号方式
+                <select id="custom-numbering">
+                  <option value="independent">独立（1、2、3）</option>
+                  <option value="hierarchical">多级（1.1、1.1.1）</option>
+                </select>
+              </label>
+            </div>
+            <p class="note">占位符：{cn} 中文数字、{n} 阿拉伯数字、{c} 圈号、{p} 多级路径。</p>
+          </div>
+
+          <div class="card">
+            <h2>选项</h2>
+            <div class="toggles">
+              <label>
+                <input type="checkbox" id="opt-autoRenumber" />
+                <span>回车后重排后续编号<small>普通方案插入新条目时自动改成连续；多级方案总是会重排。</small></span>
+              </label>
+              <label>
+                <input type="checkbox" id="opt-spaceAfterMarker" />
+                <span>编号后加一个空格<small>变成「1、 正文」，默认是「1、正文」。</small></span>
+              </label>
+              <label>
+                <input type="checkbox" id="opt-handleMarkdown" />
+                <span>接管「1. 」Markdown 列表<small>默认关闭，交给 Obsidian 原生列表处理。</small></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="card">
+            <h2>操作</h2>
+            <div class="buttons">
+              <button class="primary" id="btn-renumber">重排当前块</button>
+              <button id="btn-sample">载入示例</button>
+              <button id="btn-clear">清空</button>
+            </div>
+            <p class="note">演示页没有 Obsidian 的输入法、撤销与实时预览，这些以插件里的实际行为为准。</p>
+          </div>
+
+          <div class="card">
+            <h2>可以试这些</h2>
+            <ul class="tips" id="tips">
+              <li>「公文」：在「1、加强组织领导」末尾回车 → 出现「2、」。</li>
+              <li>「分点」：Tab 会缩进 2 格，再回车保持缩进。</li>
+              <li>「多级」：一、下面按 Tab → 1.1、；再按 Tab → 1.1.1、。</li>
+              <li>「自定义」：把模板改成「第{n}条」试试。</li>
+            </ul>
+          </div>
+        </aside>
+      </div>
+    </div>
+
+    <script src="../src/core.js"></script>
+    <script>
+      const core = window.SCNCore;
+      const ta = document.getElementById("editor");
+      const statusEl = document.getElementById("status");
+      const schemeNameEl = document.getElementById("scheme-name");
+      const levelListEl = document.getElementById("level-list");
+      const schemeBar = document.getElementById("scheme-bar");
+      const customCard = document.getElementById("custom-card");
+      const customLevelsEl = document.getElementById("custom-levels");
+      const customIndentEl = document.getElementById("custom-indent");
+      const customNumberingEl = document.getElementById("custom-numbering");
+      const validationEl = document.getElementById("validation");
+
+      const SAMPLES = {
+        gongwen: [
+          "一、总体要求",
+          "（一）指导思想",
+          "（二）工作原则",
+          "1、坚持问题导向",
+          "（1）聚焦重点难点",
+          "①建立问题台账",
+          "二、主要任务",
+          "（一）健全工作机制",
+          "1、完善调度制度",
+        ].join("\n"),
+        points: [
+          "一、背景与目标",
+          "二、重点任务",
+          "  1、市场侧",
+          "  2、产品侧",
+          "三、下一步安排",
+        ].join("\n"),
+        outline: [
+          "一、背景",
+          "  1.1、现状",
+          "  1.2、问题",
+          "二、方案",
+          "  2.1、总体思路",
+          "    2.1.1、第一阶段",
+        ].join("\n"),
+      };
+
+      let activeId = "gongwen";
+      const custom = {
+        levels: core.PRESETS.gongwen.levels.slice(),
+        indent: 0,
+        numbering: "independent",
+        separator: ".",
+      };
+
+      function rawScheme() {
+        if (activeId === "custom") {
+          return {
+            id: "custom",
+            name: "自定义",
+            levels: custom.levels.slice(),
+            indent: custom.indent,
+            numbering: custom.numbering,
+            separator: custom.separator,
+          };
+        }
+        return core.PRESETS[activeId];
+      }
+
+      const settings = Object.assign({}, core.DEFAULTS);
+      let validation = { ok: true, errors: [], warnings: [] };
+
+      function syncScheme() {
+        validation = core.validateScheme(rawScheme());
+        settings.scheme = validation.ok ? rawScheme() : core.PRESETS.gongwen;
+        renderScheme();
+      }
+
+      function renderScheme() {
+        for (const button of schemeBar.querySelectorAll("button")) {
+          button.classList.toggle("is-active", button.dataset.scheme === activeId);
+        }
+        schemeNameEl.textContent = rawScheme().name;
+        customCard.hidden = activeId !== "custom";
+
+        levelListEl.innerHTML = "";
+        const samples = core.schemeSample(settings.scheme);
+        samples.forEach((sample, index) => {
+          const li = document.createElement("li");
+          const name = document.createElement("span");
+          name.textContent = "第 " + (index + 1) + " 级";
+          const code = document.createElement("span");
+          code.textContent = sample.trim() || "（空）";
+          li.append(name, code);
+          levelListEl.append(li);
+        });
+
+        validationEl.classList.toggle("mod-error", !validation.ok);
+        validationEl.textContent = validation.ok
+          ? "✔ 模板可用"
+          : "✖ " + validation.errors[0];
+
+        customLevelsEl.value = custom.levels.join("\n");
+        customIndentEl.value = String(custom.indent);
+        customNumberingEl.value = custom.numbering;
+        updateStatus();
+      }
+
+      function currentLine() {
+        const value = ta.value;
+        const pos = ta.selectionStart;
+        const start = value.lastIndexOf("\n", pos - 1) + 1;
+        let end = value.indexOf("\n", pos);
+        if (end < 0) end = value.length;
+        return { line: value.slice(start, end), start, end };
+      }
+
+      function updateStatus() {
+        const { line } = currentLine();
+        const parsed = core.parseLine(line, settings);
+        if (!parsed) {
+          statusEl.innerHTML = "当前行：<b>无编号</b>，回车保持默认换行";
+          return;
+        }
+        const path = parsed.path ? " · 路径 " + parsed.path.join(settings.scheme.separator) : "";
+        statusEl.innerHTML =
+          "当前行：<b>第 " + parsed.level + " 级</b>" + path +
+          " · <code>" + parsed.marker.trim() + "</code>";
+      }
+
+      function applyEdit(edit) {
+        const value = ta.value;
+        ta.value = value.slice(0, edit.from) + edit.insert + value.slice(edit.to);
+        ta.focus();
+        ta.setSelectionRange(edit.cursor, edit.cursor);
+        updateStatus();
+      }
+
+      function renumberCurrent() {
+        if (!validation.ok) return;
+        const edit = core.renumber(ta.value, ta.selectionStart, settings);
+        if (edit) applyEdit(edit);
+      }
+
+      ta.addEventListener("keydown", (event) => {
+        if (event.isComposing || event.keyCode === 229) return;
+        if (event.altKey || event.ctrlKey || event.metaKey) return;
+        if (ta.selectionStart !== ta.selectionEnd) return;
+        if (!validation.ok) return;
+
+        const pos = ta.selectionStart;
+        let edit = null;
+        if (event.key === "Enter" && !event.shiftKey) {
+          edit = core.handleEnter(ta.value, pos, settings);
+        } else if (event.key === "Tab") {
+          edit = core.handleTab(ta.value, pos, event.shiftKey ? -1 : 1, settings);
+        } else if (event.key === "Backspace") {
+          edit = core.handleBackspace(ta.value, pos, settings);
+        }
+        if (!edit) return;
+
+        event.preventDefault();
+        applyEdit(edit);
+        const structural = event.key === "Enter" || event.key === "Tab";
+        const hierarchical = settings.scheme.numbering === "hierarchical";
+        if (structural && (hierarchical || settings.autoRenumber)) renumberCurrent();
+      });
+
+      ta.addEventListener("keyup", updateStatus);
+      ta.addEventListener("click", updateStatus);
+      ta.addEventListener("select", updateStatus);
+
+      schemeBar.addEventListener("click", (event) => {
+        const button = event.target.closest("button[data-scheme]");
+        if (!button) return;
+        activeId = button.dataset.scheme;
+        syncScheme();
+      });
+
+      customLevelsEl.addEventListener("input", () => {
+        custom.levels = customLevelsEl.value
+          .split("\n")
+          .map((line) => line.trim())
+          .filter(Boolean);
+        syncScheme();
+      });
+      customIndentEl.addEventListener("input", () => {
+        custom.indent = Math.min(8, Math.max(0, Number(customIndentEl.value) || 0));
+        syncScheme();
+      });
+      customNumberingEl.addEventListener("change", () => {
+        custom.numbering = customNumberingEl.value;
+        syncScheme();
+      });
+
+      document.getElementById("btn-renumber").addEventListener("click", renumberCurrent);
+
+      document.getElementById("btn-sample").addEventListener("click", () => {
+        const text = SAMPLES[activeId];
+        ta.value = text || core.schemeSample(settings.scheme).map((s) => s + "示例内容").join("\n");
+        ta.focus();
+        const anchor = Math.min(ta.value.length, ta.value.indexOf("\n") + 1 || ta.value.length);
+        ta.setSelectionRange(anchor, anchor);
+        updateStatus();
+      });
+
+      document.getElementById("btn-clear").addEventListener("click", () => {
+        ta.value = "";
+        ta.focus();
+        ta.setSelectionRange(0, 0);
+        updateStatus();
+      });
+
+      const optionMap = {
+        "opt-autoRenumber": "autoRenumber",
+        "opt-spaceAfterMarker": "spaceAfterMarker",
+        "opt-handleMarkdown": "handleMarkdown",
+      };
+      for (const [id, key] of Object.entries(optionMap)) {
+        const input = document.getElementById(id);
+        input.checked = Boolean(settings[key]);
+        input.addEventListener("change", () => {
+          settings[key] = input.checked;
+          updateStatus();
+        });
+      }
+
+      ta.value = SAMPLES.gongwen;
+      const anchor = ta.value.indexOf("（一）指导思想") + "（一）指导思想".length;
+      ta.setSelectionRange(anchor, anchor);
+      renderScheme();
+    </script>
+  </body>
+</html>
